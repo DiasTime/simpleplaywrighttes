@@ -6,7 +6,7 @@
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
-    "build": "mkdir -p dist && cp -r public/* dist/",
+    "build": "if not exist dist mkdir dist && xcopy /E /I /Y public dist",
     "start": "node dist/server.js"
   },
   "devDependencies": {

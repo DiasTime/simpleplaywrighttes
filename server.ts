@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { analyzeWebsite } from './scripts/generate-tests';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -9,6 +10,8 @@ const execAsync = promisify(exec);
 const app = express();
 const port = 3000;
 
+// Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -24,6 +27,10 @@ app.use('/reports', express.static(path.join(__dirname, 'projects')));
 app.post('/analyze', async (req, res) => {
   const { url } = req.body;
   
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
   try {
     // Create project directory
     const projectName = new URL(url).hostname.replace(/\./g, '-');
@@ -39,7 +46,8 @@ app.post('/analyze', async (req, res) => {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
     });
 
     const sendStatus = (step: number, message: string) => {

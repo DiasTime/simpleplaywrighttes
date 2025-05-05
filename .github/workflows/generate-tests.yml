@@ -1,0 +1,93 @@
+name: Generate Website Tests
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  test:
+    if: contains(github.event.issue.labels.*.name, 'test-request')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+        
+      - name: Create test directory
+        run: |
+          mkdir -p tests
+          mkdir -p test-results
+          
+      - name: Generate and run tests
+        run: |
+          # Extract URL from issue title
+          URL=$(echo "${{ github.event.issue.title }}" | sed 's/Test website: //')
+          
+          # Create test file
+          cat > tests/website.spec.ts << EOL
+          import { test, expect } from '@playwright/test';
+
+          test.describe('Website Tests', () => {
+            test.beforeEach(async ({ page }) => {
+              await page.goto('${URL}');
+            });
+
+            test('website loads successfully', async ({ page }) => {
+              await expect(page).toHaveTitle(/.*/);
+              await expect(page).toHaveURL('${URL}');
+            });
+
+            test('basic page elements are visible', async ({ page }) => {
+              await page.waitForLoadState('networkidle');
+              await expect(page.locator('body')).toBeVisible();
+            });
+
+            test('check for console errors', async ({ page }) => {
+              const consoleErrors = [];
+              page.on('console', msg => {
+                if (msg.type() === 'error') {
+                  consoleErrors.push(msg.text());
+                }
+              });
+              await page.waitForLoadState('networkidle');
+              await page.waitForTimeout(1000);
+              expect(consoleErrors.length).toBe(0);
+            });
+          });
+          EOL
+
+          # Run tests
+          npx playwright test --reporter=json
+          
+      - name: Save test results
+        run: |
+          # Create results directory if it doesn't exist
+          mkdir -p test-results
+          
+          # Save test results
+          cp playwright-report/test-results.json "test-results/$(echo '${URL}' | sed 's/[^a-zA-Z0-9]/_/g').json"
+          
+      - name: Update issue with results
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const testResults = JSON.parse(fs.readFileSync('playwright-report/test-results.json', 'utf8'));
+            
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Test results for ${context.payload.issue.title}:\n\n\`\`\`json\n${JSON.stringify(testResults, null, 2)}\n\`\`\``,
+              state: 'closed'
+            }); 

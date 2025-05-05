@@ -31,6 +31,12 @@ app.post('/analyze', async (req, res) => {
     return res.status(400).json({ error: 'URL is required' });
   }
 
+  // Set proper headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
   try {
     // Create project directory
     const projectName = new URL(url).hostname.replace(/\./g, '-');
@@ -41,14 +47,6 @@ app.post('/analyze', async (req, res) => {
     if (!fs.existsSync(projectsDir)) {
       fs.mkdirSync(projectsDir, { recursive: true });
     }
-
-    // Send initial response with status updates
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
-    });
 
     const sendStatus = (step: number, message: string) => {
       res.write(`data: ${JSON.stringify({ type: 'status', step, message })}\n\n`);
@@ -121,10 +119,9 @@ app.post('/analyze', async (req, res) => {
         errors: stderr
       };
 
-      console.log('Sending response data:', responseData); // Debug log
       res.write(`data: ${JSON.stringify(responseData)}\n\n`);
     } catch (testError: any) {
-      console.error('Test execution error:', testError); // Debug log
+      console.error('Test execution error:', testError);
       
       // If test execution fails, still try to get the report
       const reportPath = path.join(projectDir, 'playwright-report', 'index.html');
@@ -161,13 +158,12 @@ app.post('/analyze', async (req, res) => {
         }
       };
 
-      console.log('Sending error data:', errorData); // Debug log
       res.write(`data: ${JSON.stringify(errorData)}\n\n`);
     }
     
     res.end();
   } catch (error: any) {
-    console.error('General error:', error); // Debug log
+    console.error('General error:', error);
     res.write(`data: ${JSON.stringify({
       type: 'error',
       success: false,
@@ -175,6 +171,16 @@ app.post('/analyze', async (req, res) => {
     })}\n\n`);
     res.end();
   }
+});
+
+// Error handling middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Server error:', err);
+  res.status(500).json({
+    type: 'error',
+    success: false,
+    error: err.message || 'Internal server error'
+  });
 });
 
 app.listen(port, () => {

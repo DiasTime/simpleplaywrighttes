@@ -1,12 +1,11 @@
 name: Generate Website Tests
 
 on:
-  issues:
-    types: [opened, labeled]
+  repository_dispatch:
+    types: [generate_tests]
 
 jobs:
   test:
-    if: contains(github.event.issue.labels.*.name, 'test-request')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -19,75 +18,71 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
         
-      - name: Create test directory
+      - name: Create test file
         run: |
           mkdir -p tests
-          mkdir -p test-results
-          
-      - name: Generate and run tests
-        run: |
-          # Extract URL from issue title
-          URL=$(echo "${{ github.event.issue.title }}" | sed 's/Test website: //')
-          
-          # Create test file
-          cat > tests/website.spec.ts << EOL
+          cat > tests/website.spec.ts << 'EOL'
           import { test, expect } from '@playwright/test';
 
           test.describe('Website Tests', () => {
-            test.beforeEach(async ({ page }) => {
-              await page.goto('${URL}');
-            });
-
-            test('website loads successfully', async ({ page }) => {
+            test('should load successfully', async ({ page }) => {
+              await page.goto('${{ github.event.client_payload.url }}');
               await expect(page).toHaveTitle(/.*/);
-              await expect(page).toHaveURL('${URL}');
             });
 
-            test('basic page elements are visible', async ({ page }) => {
-              await page.waitForLoadState('networkidle');
+            test('should have visible content', async ({ page }) => {
+              await page.goto('${{ github.event.client_payload.url }}');
               await expect(page.locator('body')).toBeVisible();
             });
 
-            test('check for console errors', async ({ page }) => {
-              const consoleErrors = [];
+            test('should not have console errors', async ({ page }) => {
+              const errors = [];
               page.on('console', msg => {
                 if (msg.type() === 'error') {
-                  consoleErrors.push(msg.text());
+                  errors.push(msg.text());
                 }
               });
+              
+              await page.goto('${{ github.event.client_payload.url }}');
               await page.waitForLoadState('networkidle');
-              await page.waitForTimeout(1000);
-              expect(consoleErrors.length).toBe(0);
+              
+              expect(errors).toHaveLength(0);
+            });
+
+            test('should have working navigation', async ({ page }) => {
+              await page.goto('${{ github.event.client_payload.url }}');
+              const links = await page.$$('a[href]');
+              expect(links.length).toBeGreaterThan(0);
+            });
+
+            test('should have responsive design', async ({ page }) => {
+              await page.goto('${{ github.event.client_payload.url }}');
+              await page.setViewportSize({ width: 375, height: 667 });
+              await expect(page.locator('body')).toBeVisible();
             });
           });
           EOL
 
-          # Run tests
-          npx playwright test --reporter=json
-          
-      - name: Save test results
+      - name: Run tests
+        run: npx playwright test --reporter=html,json
+        
+      - name: Upload test results
         run: |
-          # Create results directory if it doesn't exist
           mkdir -p test-results
+          cp playwright-report/results.json "test-results/$(echo '${{ github.event.client_payload.url }}' | sed 's/[^a-zA-Z0-9]/_/g').json"
           
-          # Save test results
-          cp playwright-report/test-results.json "test-results/$(echo '${URL}' | sed 's/[^a-zA-Z0-9]/_/g').json"
+      - name: Upload HTML report
+        run: |
+          mkdir -p reports
+          cp -r playwright-report "reports/$(echo '${{ github.event.client_payload.url }}' | sed 's/[^a-zA-Z0-9]/_/g')"
           
-      - name: Update issue with results
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const testResults = JSON.parse(fs.readFileSync('playwright-report/test-results.json', 'utf8'));
-            
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `Test results for ${context.payload.issue.title}:\n\n\`\`\`json\n${JSON.stringify(testResults, null, 2)}\n\`\`\``,
-              state: 'closed'
-            }); 
+      - name: Commit and push results
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add test-results reports
+          git commit -m "Add test results for ${{ github.event.client_payload.url }}" || exit 0
+          git push 

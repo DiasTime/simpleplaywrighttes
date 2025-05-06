@@ -7,7 +7,7 @@ import fs from 'fs';
 
 const execAsync = promisify(exec);
 const app = express();
-const port = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -169,6 +169,19 @@ app.post('/analyze', async (req: Request, res: Response) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Test generator running at http://localhost:${port}`);
-}); 
+const startServer = async (port: number) => {
+  try {
+    app.listen(port, () => {
+      console.log(`Server is running on http://localhost:${port}`);
+    });
+  } catch (error: any) {
+    if (error.code === 'EADDRINUSE') {
+      console.log(`Port ${port} is busy, trying ${port + 1}...`);
+      await startServer(port + 1);
+    } else {
+      console.error('Error starting server:', error);
+    }
+  }
+};
+
+startServer(PORT); 

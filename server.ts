@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { analyzeWebsite } from './scripts/generate-tests';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -13,7 +13,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Serve the main page
-app.get('/', (req, res) => {
+app.get('/', (req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -21,7 +21,7 @@ app.get('/', (req, res) => {
 app.use('/reports', express.static(path.join(__dirname, 'projects')));
 
 // API endpoint to analyze website
-app.post('/analyze', async (req, res) => {
+app.post('/analyze', async (req: Request, res: Response) => {
   const { url } = req.body;
   
   try {

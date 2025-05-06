@@ -1,7 +1,7 @@
 @echo off
-echo Cleaning old dependencies...
-rmdir /s /q node_modules
-del package-lock.json
+@REM echo Cleaning old dependencies...
+@REM rmdir /s /q node_modules
+@REM del package-lock.json
 
 echo Installing dependencies...
 call npm install
